@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Money Trail Expense Tracker</title>
+  <title>MoneyTrail - Smart Expense Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="styles/style.css" />
@@ -13,10 +13,11 @@
   <div class="glass-container">
     <header class="header">
       <div class="logo">
-        <i class="fas fa-wallet"></i>
-        <h1>MoneyTrail<span>Tracker</span></h1>
+        <i class="fas fa-route"></i>
+        <h1>Money<span>Trail</span></h1>
       </div>
       <div class="header-actions">
+        <button id="resetAppBtn" title="Reset All Data" class="danger-btn"><i class="fas fa-sync-alt"></i></button>
         <button id="exportBtn" title="Export to CSV"><i class="fas fa-download"></i></button>
         <button id="darkModeToggle"><i class="fas fa-moon"></i></button>
       </div>
@@ -25,7 +26,7 @@
     <section class="dashboard">
       <div class="card balance-card">
         <div class="card-info">
-          <h3>Total Balance</h3>
+          <h3 id="balanceLabel">Total Balance</h3>
           <p id="balance">₹0</p>
         </div>
         <i class="fas fa-scale-balanced icon"></i>
@@ -49,12 +50,13 @@
     <div class="main-grid">
       <aside class="sidebar">
         <section class="form-section">
-          <h2><i class="fas fa-plus-circle"></i> Add Transaction</h2>
+          <h2><i class="fas fa-plus-circle"></i> Add Entry</h2>
           <form id="transactionForm">
             <div class="input-group">
+              <label>Type</label>
               <select id="type">
-                <option value="income">Income</option>
                 <option value="expense" selected>Expense</option>
+                <option value="income">Income</option>
               </select>
             </div>
             <div class="input-group">
@@ -63,43 +65,58 @@
             <div class="input-group">
               <input type="date" id="date" required />
             </div>
+            
             <div class="input-group">
-              <select id="category">
-                <option>Food</option>
-                <option>Travel</option>
-                <option>Rent</option>
-                <option>Shopping</option>
-                <option>Bills</option>
-                <option>Education</option>
-                <option>Health</option>
-                <option>Others</option>
-              </select>
+              <label id="catLabel">Category</label>
+              <select id="category"></select>
             </div>
-            <button type="submit" class="submit-btn">Add Entry</button>
-            <p id="error" class="error"></p>
+
+            <div class="input-group" id="customCategoryGroup" style="display:none;">
+              <input type="text" id="customCategory" placeholder="New category name...">
+            </div>
+
+            <div class="input-group">
+              <input type="text" id="description" placeholder="Description (Optional)">
+            </div>
+
+            <button type="submit" class="submit-btn">Add to Trail</button>
           </form>
         </section>
 
         <section class="filters">
           <h3><i class="fas fa-filter"></i> Filters</h3>
-          <input type="text" id="searchInput" placeholder="Search transactions...">
-          <select id="filterCategory">
-            <option value="all">All Categories</option>
-            <option>Food</option>
-            <option>Travel</option>
-            <option>Rent</option>
-            <option>Shopping</option>
-            <option>Bills</option>
-            <option>Education</option>
-            <option>Health</option>
-            <option>Others</option>
-          </select>
-          <select id="sortBy">
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="highest">Highest Amount</option>
-            <option value="lowest">Lowest Amount</option>
-          </select>
+          
+          <div class="input-group">
+            <label>Time Frame</label>
+            <select id="timeFrame">
+              <option value="all">All Time</option>
+              <option value="day">Specific Day</option>
+              <option value="month">Specific Month</option>
+            </select>
+          </div>
+
+          <div id="timeSpecificInputs">
+             <input type="date" id="filterDate" style="display:none; margin-bottom:10px;">
+             <input type="month" id="filterMonth" style="display:none; margin-bottom:10px;">
+          </div>
+
+          <input type="text" id="searchInput" placeholder="Search notes...">
+          
+          <div class="filter-row">
+            <select id="filterType">
+              <option value="all">All Types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+            <select id="filterCategory">
+              <option value="all">All Categories</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h3><i class="fas fa-tags"></i> My Categories</h3>
+          <ul id="manageCatsList" class="cat-manage-list"></ul>
         </section>
       </aside>
 
@@ -121,7 +138,7 @@
 
         <section class="history">
           <div class="history-header">
-            <h2>Transaction History</h2>
+            <h2 id="historyTitle">Transaction History</h2>
             <span id="transactionCount">0 items</span>
           </div>
           <div class="scroll-area">
@@ -131,7 +148,6 @@
       </main>
     </div>
   </div>
-
   <script src="scripts/script.js"></script>
 </body>
 </html>
