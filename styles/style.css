@@ -1,0 +1,135 @@
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --text: #222;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --shadow: 0 8px 20px rgba(0,0,0,0.08);
+}
+
+body.dark {
+  --bg: #121212;
+  --card: #1e1e1e;
+  --text: #f1f1f1;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.header {
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header button {
+  border: none;
+  background: var(--card);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+  gap: 1rem;
+  padding: 1rem 2rem;
+}
+
+.card {
+  background: var(--card);
+  padding: 1.2rem;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.card p {
+  font-size: 1.6rem;
+  margin: 0.5rem 0 0;
+}
+
+.income p { color: var(--green); }
+.expense p { color: var(--red); }
+
+.form-section,
+.history,
+.filters,
+.charts {
+  background: var(--card);
+  margin: 1rem 2rem;
+  padding: 1.5rem;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(150px,1fr));
+  gap: 1rem;
+}
+
+form button {
+  grid-column: span 2;
+  padding: 0.7rem;
+  background: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.error {
+  color: var(--red);
+  grid-column: span 2;
+}
+
+.filters {
+  display: flex;
+  gap: 1rem;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(280px,1fr));
+  gap: 1rem;
+}
+
+.chart-card canvas {
+  width: 100%;
+  height: 260px;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.7rem;
+  margin-bottom: 0.5rem;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+li.income { border-left: 5px solid var(--green); }
+li.expense { border-left: 5px solid var(--red); }
+
+li button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--red);
+}
