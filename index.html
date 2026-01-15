@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>MoneyTrail - Smart Expense Tracker</title>
+  <title>MoneyTrail - Professional Finance Suite</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="styles/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
   <div class="glass-container">
@@ -17,32 +18,24 @@
         <h1>Money<span>Trail</span></h1>
       </div>
       <div class="header-actions">
+        <button id="downloadReport" title="Generate PDF Report"><i class="fas fa-file-pdf"></i></button>
+        <button id="exportBtn" title="Download CSV Data"><i class="fas fa-file-csv"></i></button>
         <button id="resetAppBtn" title="Reset All Data" class="danger-btn"><i class="fas fa-sync-alt"></i></button>
-        <button id="exportBtn" title="Export to CSV"><i class="fas fa-download"></i></button>
         <button id="darkModeToggle"><i class="fas fa-moon"></i></button>
       </div>
     </header>
 
     <section class="dashboard">
       <div class="card balance-card">
-        <div class="card-info">
-          <h3 id="balanceLabel">Total Balance</h3>
-          <p id="balance">₹0</p>
-        </div>
+        <div class="card-info"><h3>Current Balance</h3><p id="balance">₹0</p></div>
         <i class="fas fa-scale-balanced icon"></i>
       </div>
       <div class="card income-card">
-        <div class="card-info">
-          <h3>Total Income</h3>
-          <p id="income">₹0</p>
-        </div>
+        <div class="card-info"><h3>Total Income</h3><p id="income">₹0</p></div>
         <i class="fas fa-arrow-trend-up icon"></i>
       </div>
       <div class="card expense-card">
-        <div class="card-info">
-          <h3>Total Expense</h3>
-          <p id="expense">₹0</p>
-        </div>
+        <div class="card-info"><h3>Total Expense</h3><p id="expense">₹0</p></div>
         <i class="fas fa-arrow-trend-down icon"></i>
       </div>
     </section>
@@ -53,7 +46,6 @@
           <h2><i class="fas fa-plus-circle"></i> Add Entry</h2>
           <form id="transactionForm">
             <div class="input-group">
-              <label>Type</label>
               <select id="type">
                 <option value="expense" selected>Expense</option>
                 <option value="income">Income</option>
@@ -65,57 +57,25 @@
             <div class="input-group">
               <input type="date" id="date" required />
             </div>
-            
             <div class="input-group">
-              <label id="catLabel">Category</label>
               <select id="category"></select>
             </div>
-
             <div class="input-group" id="customCategoryGroup" style="display:none;">
               <input type="text" id="customCategory" placeholder="New category name...">
             </div>
-
             <div class="input-group">
               <input type="text" id="description" placeholder="Description (Optional)">
             </div>
-
-            <button type="submit" class="submit-btn">Add to Trail</button>
+            <div class="checkbox-group">
+              <label><input type="checkbox" id="isRecurring"> Monthly Recurring</label>
+              <label><input type="checkbox" id="isReminder"> Set Bill Reminder (Deduct Later)</label>
+            </div>
+            <button type="submit" class="submit-btn">Save to Trail</button>
           </form>
         </section>
 
-        <section class="filters">
-          <h3><i class="fas fa-filter"></i> Filters</h3>
-          
-          <div class="input-group">
-            <label>Time Frame</label>
-            <select id="timeFrame">
-              <option value="all">All Time</option>
-              <option value="day">Specific Day</option>
-              <option value="month">Specific Month</option>
-            </select>
-          </div>
-
-          <div id="timeSpecificInputs">
-             <input type="date" id="filterDate" style="display:none; margin-bottom:10px;">
-             <input type="month" id="filterMonth" style="display:none; margin-bottom:10px;">
-          </div>
-
-          <input type="text" id="searchInput" placeholder="Search notes...">
-          
-          <div class="filter-row">
-            <select id="filterType">
-              <option value="all">All Types</option>
-              <option value="income">Income</option>
-              <option value="expense">Expense</option>
-            </select>
-            <select id="filterCategory">
-              <option value="all">All Categories</option>
-            </select>
-          </div>
-        </section>
-
         <section class="form-section">
-          <h3><i class="fas fa-tags"></i> My Categories</h3>
+          <h3><i class="fas fa-tags"></i> Categories</h3>
           <ul id="manageCatsList" class="cat-manage-list"></ul>
         </section>
       </aside>
@@ -124,30 +84,85 @@
         <section class="charts-container">
           <div class="chart-card">
             <h3>Expense Breakdown</h3>
-            <div class="canvas-holder">
-                <canvas id="pieChart"></canvas>
-            </div>
+            <div class="canvas-holder"><canvas id="pieChart"></canvas></div>
           </div>
           <div class="chart-card">
-            <h3>Monthly Trend</h3>
-            <div class="canvas-holder">
-                <canvas id="barChart"></canvas>
-            </div>
+            <h3>Weekly Spending</h3>
+            <div class="canvas-holder"><canvas id="weeklyChart"></canvas></div>
+          </div>
+          <div class="chart-card full-width">
+            <h3>Monthly Trends</h3>
+            <div class="canvas-holder"><canvas id="barChart"></canvas></div>
           </div>
         </section>
 
         <section class="history">
-          <div class="history-header">
-            <h2 id="historyTitle">Transaction History</h2>
-            <span id="transactionCount">0 items</span>
+          <div class="filters-top">
+            <select id="timeFrame">
+              <option value="all">All Time</option>
+              <option value="day">Specific Day</option>
+              <option value="month">Specific Month</option>
+            </select>
+            <input type="date" id="filterDate" style="display:none;">
+            <input type="month" id="filterMonth" style="display:none;">
+            <input type="text" id="searchInput" placeholder="Search history...">
+            <select id="sortBy">
+              <option value="newest">Newest</option>
+              <option value="highest">Highest</option>
+            </select>
           </div>
-          <div class="scroll-area">
-            <ul id="transactionList"></ul>
-          </div>
+          <div class="scroll-area"><ul id="transactionList"></ul></div>
+        </section>
+
+        <section class="history reminders-section">
+          <h3><i class="fas fa-bell"></i> Upcoming Bill Reminders</h3>
+          <ul id="reminderList"></ul>
         </section>
       </main>
     </div>
   </div>
+
+  <div id="pdf-report-template" style="display: none; padding: 40px; font-family: 'Inter', sans-serif; background: #fff; width: 800px;">
+    <h1 style="color: #6366f1; border-bottom: 2px solid #6366f1; padding-bottom: 10px;">MoneyTrail Financial Report</h1>
+    <p id="pdf-report-date" style="margin-bottom: 20px; font-size: 0.9rem; color: #64748b;"></p>
+    
+    <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+      <div style="flex: 1; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
+        <h4 style="margin:0; font-size: 0.75rem; color: #64748b;">TOTAL INCOME</h4>
+        <h2 id="pdf-income" style="margin:5px 0 0 0; color: #10b981;">₹0</h2>
+      </div>
+      <div style="flex: 1; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
+        <h4 style="margin:0; font-size: 0.75rem; color: #64748b;">TOTAL EXPENSE</h4>
+        <h2 id="pdf-expense" style="margin:5px 0 0 0; color: #ef4444;">₹0</h2>
+      </div>
+    </div>
+
+    <h3>Expense Visualizations</h3>
+    <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+        <div style="flex: 1; text-align: center;">
+            <img id="pdf-pie-img" style="width: 100%; max-height: 250px; object-fit: contain;">
+            <p style="font-size: 0.8rem; color: #64748b;">Category Distribution</p>
+        </div>
+        <div style="flex: 1; text-align: center;">
+            <img id="pdf-bar-img" style="width: 100%; max-height: 250px; object-fit: contain;">
+            <p style="font-size: 0.8rem; color: #64748b;">Income vs Expense Trend</p>
+        </div>
+    </div>
+
+    <h3>Detailed Transaction Log</h3>
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+      <thead>
+        <tr style="background: #6366f1; color: white;">
+          <th style="padding: 10px; text-align: left;">Date</th>
+          <th style="padding: 10px; text-align: left;">Category</th>
+          <th style="padding: 10px; text-align: left;">Type</th>
+          <th style="padding: 10px; text-align: right;">Amount</th>
+        </tr>
+      </thead>
+      <tbody id="pdf-table-body"></tbody>
+    </table>
+  </div>
+
   <script src="scripts/script.js"></script>
 </body>
 </html>
