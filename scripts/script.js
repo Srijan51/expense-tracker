@@ -1,252 +1,254 @@
-// State Management
-let transactions = JSON.parse(localStorage.getItem("trail_data")) || [];
-let reminders = JSON.parse(localStorage.getItem("trail_reminders")) || [];
-let categories = JSON.parse(localStorage.getItem("trail_cats")) || ["Food", "Rent", "Salary", "Shopping", "Bills", "Health"];
+// Data Persistence
+let trail = JSON.parse(localStorage.getItem("moneytrail_v6")) || [];
+let pendingBills = JSON.parse(localStorage.getItem("mt_bills_v6")) || [];
+let cats = JSON.parse(localStorage.getItem("mt_cats_v6")) || ["Food", "Rent", "Salary", "Shopping", "Transport", "Entertainment", "Health"];
 let charts = {};
 
 /* ---------- INITIALIZATION ---------- */
 function init() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById("date").value = today;
+    document.getElementById("date").value = new Date().toISOString().split('T')[0];
     populateDropdowns();
     updateUI();
 }
 
-/* ---------- CORE LOGIC ---------- */
-function save() {
-    localStorage.setItem("trail_data", JSON.stringify(transactions));
-    localStorage.setItem("trail_reminders", JSON.stringify(reminders));
-    localStorage.setItem("trail_cats", JSON.stringify(categories));
+/* ---------- SMART VOICE PARSER ---------- */
+const voiceBtn = document.getElementById("voiceBtn");
+
+if ('webkitSpeechRecognition' in window) {
+    const recognition = new webkitSpeechRecognition();
+    recognition.continuous = false;
+    recognition.lang = 'en-IN';
+
+    recognition.onstart = () => notify("Listening... Just speak naturally!", 2000);
+    
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript.toLowerCase();
+        console.log("Speech recognized:", transcript);
+        parseNaturalLanguage(transcript);
+    };
+
+    voiceBtn.onclick = () => recognition.start();
 }
 
+function parseNaturalLanguage(text) {
+    // 1. Extract Amount (First number found)
+    const amountMatch = text.match(/\d+/);
+    if (amountMatch) document.getElementById("amount").value = amountMatch[0];
+
+    // 2. Extract Type (Expenditure vs Income)
+    const expWords = ["expenditure", "expense", "spent", "spending", "paid", "gave"];
+    const incWords = ["income", "salary", "earned", "got", "received"];
+    
+    if (expWords.some(w => text.includes(w))) {
+        document.getElementById("type").value = "expense";
+    } else if (incWords.some(w => text.includes(w))) {
+        document.getElementById("type").value = "income";
+    }
+
+    // 3. Extract Category (Search for existing categories in string)
+    const foundCat = cats.find(c => text.includes(c.toLowerCase()));
+    if (foundCat) {
+        document.getElementById("category").value = foundCat;
+    } else {
+        // Fallback for Custom if "for [something]" pattern is used
+        const customMatch = text.match(/for (.*?) (and|at|on|$)/);
+        if (customMatch) {
+            document.getElementById("category").value = "custom";
+            document.getElementById("customCategoryGroup").style.display = "block";
+            document.getElementById("customCategory").value = customCategory.value = customMatch[1].trim();
+        }
+    }
+
+    // 4. Extract Date
+    if (text.includes("yesterday")) {
+        let d = new Date(); d.setDate(d.getDate() - 1);
+        document.getElementById("date").value = d.toISOString().split('T')[0];
+    } else if (text.includes("tomorrow")) {
+        let d = new Date(); d.setDate(d.getDate() + 1);
+        document.getElementById("date").value = d.toISOString().split('T')[0];
+    }
+
+    notify("Voice recognized! Check the form and hit save.", 4000);
+}
+
+/* ---------- STYLISH NOTIFICATIONS ---------- */
+function notify(msg, duration = 3000) {
+    const container = document.getElementById("toastContainer");
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerText = msg;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), duration);
+}
+
+function askConfirmation(title, text, onConfirm) {
+    const overlay = document.getElementById("modalOverlay");
+    document.getElementById("modalTitle").innerText = title;
+    document.getElementById("modalText").innerText = text;
+    overlay.style.display = "flex";
+
+    document.getElementById("modalConfirm").onclick = () => {
+        onConfirm();
+        overlay.style.display = "none";
+    };
+    document.getElementById("modalCancel").onclick = () => overlay.style.display = "none";
+}
+
+/* ---------- CORE ENGINE ---------- */
 function updateUI() {
     const filtered = filterData();
-    calculateTotals(filtered);
-    renderTransactions(filtered);
-    renderReminders();
+    calculateDashboard(filtered);
+    renderList(filtered);
+    renderBills();
     initCharts(filtered);
 }
 
-function calculateTotals(data) {
-    const inc = data.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
-    const exp = data.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+function calculateDashboard(data) {
+    const inc = trail.filter(t => t.type === 'income').reduce((s,t) => s + t.amount, 0);
+    const exp = trail.filter(t => t.type === 'expense').reduce((s,t) => s + t.amount, 0);
+    document.getElementById("balance").textContent = `₹${(inc - exp).toLocaleString()}`;
     document.getElementById("income").textContent = `₹${inc.toLocaleString()}`;
     document.getElementById("expense").textContent = `₹${exp.toLocaleString()}`;
-    document.getElementById("balance").textContent = `₹${(inc - exp).toLocaleString()}`;
 }
 
 function filterData() {
-    let data = [...transactions];
-    const tf = document.getElementById("timeFrame").value;
-    if (tf === "day") data = data.filter(t => t.date === document.getElementById("filterDate").value);
-    if (tf === "month") data = data.filter(t => t.date.startsWith(document.getElementById("filterMonth").value));
-    
+    let data = [...trail];
     const search = document.getElementById("searchInput").value.toLowerCase();
+    const typeF = document.getElementById("filterType").value;
+    
+    if (typeF !== "all") data = data.filter(t => t.type === typeF);
     data = data.filter(t => t.category.toLowerCase().includes(search) || (t.description || "").toLowerCase().includes(search));
     
-    return data.sort((a,b) => document.getElementById("sortBy").value === "newest" ? b.id - a.id : b.amount - a.amount);
+    return data.sort((a,b) => b.id - a.id);
 }
 
-/* ---------- RENDERING ---------- */
-function renderTransactions(data) {
-    document.getElementById("transactionList").innerHTML = data.map(t => `
+function renderList(data) {
+    document.getElementById("transactionList").innerHTML = data.slice(0, 20).map(t => `
         <li class="${t.type}">
-            <div class="li-content">
-                <span class="li-category">${t.category} ${t.recurring ? '🔄' : ''}</span>
-                <span class="li-date">${t.date}</span>
-                <small class="li-desc">${t.description || ''}</small>
-            </div>
-            <div style="display:flex; align-items:center; gap:15px;">
-                <span class="li-amount">${t.type === 'expense' ? '-' : '+'}₹${t.amount.toLocaleString()}</span>
-                <button onclick="deleteTransaction(${t.id})" class="delete-btn"><i class="fas fa-trash-alt"></i></button>
-            </div>
+            <div><b>${t.category}</b><br><small>${t.date}</small></div>
+            <div>${t.type === 'expense' ? '-' : '+'}₹${t.amount.toLocaleString()} 
+            <button onclick="deleteEntry(${t.id}, 'trail')" class="delete-btn"><i class="fas fa-trash"></i></button></div>
         </li>`).join('');
 }
 
-function renderReminders() {
-    document.getElementById("reminderList").innerHTML = reminders.length ? reminders.map(r => `
-        <li class="reminder-item" style="border-left: 5px solid var(--primary);">
-            <span><b>${r.date}:</b> ${r.category} (₹${r.amount})</span>
-            <div style="display:flex; gap:12px;">
-                <button title="Mark as Paid" onclick="completeReminder(${r.id})" class="complete-btn"><i class="fas fa-check-circle"></i></button>
-                <button title="Remove Reminder" onclick="deleteReminder(${r.id})" class="delete-btn"><i class="fas fa-trash-alt"></i></button>
+function renderBills() {
+    document.getElementById("reminderList").innerHTML = pendingBills.map(b => `
+        <li style="border-left: 5px solid var(--primary)">
+            <span>${b.date}: ${b.category} (₹${b.amount})</span>
+            <div>
+                <button onclick="payBill(${b.id})" style="color:var(--income); border:none; background:none; cursor:pointer"><i class="fas fa-check-circle"></i></button>
+                <button onclick="deleteEntry(${b.id}, 'bill')" style="color:var(--expense); border:none; background:none; cursor:pointer; margin-left:10px;"><i class="fas fa-trash-alt"></i></button>
             </div>
-        </li>`).join('') : "<li>No upcoming bill reminders.</li>";
+        </li>`).join('') || "<li>All caught up!</li>";
 }
 
-/* ---------- ACTIONS ---------- */
-function completeReminder(id) {
-    const idx = reminders.findIndex(r => r.id === id);
-    if (idx !== -1) {
-        const item = reminders[idx];
-        transactions.push({
-            ...item,
-            id: Date.now(),
-            date: new Date().toISOString().split('T')[0], // Deduct today
-            reminder: false
-        });
-        reminders.splice(idx, 1);
-        save(); updateUI();
-    }
+function payBill(id) {
+    const idx = pendingBills.findIndex(b => b.id === id);
+    const bill = pendingBills.splice(idx, 1)[0];
+    trail.push({ ...bill, id: Date.now(), date: new Date().toISOString().split('T')[0] });
+    save(); updateUI(); notify("Bill Paid & Recorded!");
 }
 
-function deleteReminder(id) {
-    if(confirm("Delete this reminder?")) {
-        reminders = reminders.filter(r => r.id !== id);
-        save(); updateUI();
-    }
+function deleteEntry(id, type) {
+    if (type === 'trail') trail = trail.filter(t => t.id !== id);
+    else pendingBills = pendingBills.filter(b => b.id !== id);
+    save(); updateUI();
 }
 
-function deleteTransaction(id) {
-    if(confirm("Permanently delete this entry?")) {
-        transactions = transactions.filter(t => t.id !== id);
-        save(); updateUI();
-    }
-}
-
-/* ---------- CHARTS ---------- */
-function initCharts(data) {
-    Object.values(charts).forEach(c => { if(c) c.destroy(); });
-    
-    // Expense Pie
-    const expData = data.filter(t => t.type === 'expense');
-    const cats = {};
-    expData.forEach(e => cats[e.category] = (cats[e.category] || 0) + e.amount);
-    charts.pie = new Chart(document.getElementById('pieChart'), {
-        type: 'doughnut',
-        data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#6366f1','#ec4899','#f59e0b','#10b981','#ef4444','#8b5cf6'] }] },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    // Weekly Line
-    const weekly = new Array(7).fill(0);
-    expData.forEach(t => weekly[new Date(t.date).getDay()] += t.amount);
-    charts.weekly = new Chart(document.getElementById('weeklyChart'), {
-        type: 'line',
-        data: { labels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], datasets: [{ label:'Expenses', data: weekly, borderColor:'#6366f1', fill:true, tension:0.4 }] },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    // Monthly Trend
-    const monthly = {};
-    transactions.forEach(t => {
-        const m = t.date.slice(0, 7);
-        if(!monthly[m]) monthly[m] = {i:0, e:0};
-        t.type === 'income' ? monthly[m].i += t.amount : monthly[m].e += t.amount;
-    });
-    const mLabels = Object.keys(monthly).sort();
-    charts.bar = new Chart(document.getElementById('barChart'), {
-        type: 'bar',
-        data: { labels: mLabels, datasets: [
-            { label: 'Income', data: mLabels.map(m => monthly[m].i), backgroundColor: '#10b981' },
-            { label: 'Expense', data: mLabels.map(m => monthly[m].e), backgroundColor: '#ef4444' }
-        ]},
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-}
-
-/* ---------- EXPORTS (OPTIMIZED) ---------- */
-document.getElementById("downloadReport").onclick = () => {
-    const template = document.getElementById('pdf-report-template');
-    
-    // Update text data
-    document.getElementById('pdf-report-date').innerText = `Generated on: ${new Date().toLocaleDateString()}`;
-    document.getElementById('pdf-income').innerText = document.getElementById('income').innerText;
-    document.getElementById('pdf-expense').innerText = document.getElementById('expense').innerText;
-    
-    // Convert current charts to images for PDF
-    document.getElementById('pdf-pie-img').src = charts.pie.toBase64Image();
-    document.getElementById('pdf-bar-img').src = charts.bar.toBase64Image();
-
-    // Fill table
-    document.getElementById('pdf-table-body').innerHTML = transactions.map(t => `
-        <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px;">${t.date}</td>
-            <td style="padding: 10px;">${t.category}</td>
-            <td style="padding: 10px; color: ${t.type === 'income' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.type.toUpperCase()}</td>
-            <td style="padding: 10px; text-align: right;">₹${t.amount.toLocaleString()}</td>
-        </tr>
-    `).join('');
-
-    template.style.display = 'block';
-    const opt = { 
-        margin: 0.5, 
-        filename: 'MoneyTrail_Full_Report.pdf', 
-        image: { type: 'jpeg', quality: 0.98 }, 
-        html2canvas: { scale: 2 }, 
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-    };
-    html2pdf().from(template).set(opt).save().then(() => template.style.display = 'none');
-};
-
-document.getElementById("exportBtn").onclick = () => {
-    if (transactions.length === 0) return alert("No history to export.");
-    const headers = ["Date", "Type", "Category", "Amount", "Description", "Recurring"];
-    const rows = transactions.map(t => [
-        t.date, 
-        t.type, 
-        t.category, 
-        t.amount, 
-        `"${t.description || ''}"`,
-        t.recurring ? "Yes" : "No"
-    ].join(","));
-    const csv = headers.join(",") + "\n" + rows.join("\n");
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `MoneyTrail_Data_${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
-};
-
-/* ---------- EVENTS ---------- */
-document.getElementById("transactionForm").onsubmit = e => {
+/* ---------- FORM & EXPORTS ---------- */
+document.getElementById("transactionForm").onsubmit = (e) => {
     e.preventDefault();
-    const type = document.getElementById("type").value;
-    const catInput = document.getElementById("category").value;
-    const cat = catInput === 'custom' ? document.getElementById("customCategory").value : catInput;
-    
+    const catVal = document.getElementById("category").value;
+    const finalCat = catVal === 'custom' ? document.getElementById("customCategory").value : catVal;
+
     const entry = {
         id: Date.now(),
-        type: type,
+        type: document.getElementById("type").value,
         amount: parseFloat(document.getElementById("amount").value),
         date: document.getElementById("date").value,
-        category: cat || "General",
+        category: finalCat || "General",
         description: document.getElementById("description").value,
-        recurring: document.getElementById("isRecurring").checked,
-        reminder: document.getElementById("isReminder").checked
+        recurring: document.getElementById("isRecurring").checked
     };
 
-    if (cat && !categories.includes(cat)) { categories.push(cat); populateDropdowns(); }
+    if (catVal === 'custom' && finalCat) { cats.push(finalCat); populateDropdowns(); }
 
-    if (entry.reminder) {
-        reminders.push(entry);
+    if (document.getElementById("isReminder").checked) {
+        pendingBills.push(entry); notify("Reminder Saved!");
     } else {
-        transactions.push(entry);
+        trail.push(entry); notify("Added to Trail!");
     }
     
     save(); updateUI(); e.target.reset();
     document.getElementById("date").value = new Date().toISOString().split('T')[0];
 };
 
-function populateDropdowns() {
-    const sorted = [...categories].sort();
-    document.getElementById("category").innerHTML = `<option value="">Select Category</option>` + sorted.map(c => `<option value="${c}">${c}</option>`).join('') + `<option value="custom">+ New Category</option>`;
-    document.getElementById("manageCatsList").innerHTML = sorted.map(c => `<li class="cat-item"><span>${c}</span><button onclick="deleteCategory('${c}')"><i class="fas fa-times"></i></button></li>`).join('');
+document.getElementById("downloadReport").onclick = () => {
+    const temp = document.getElementById("pdf-template");
+    document.getElementById("pdf-report-date").innerText = `Trail Summary: ${new Date().toLocaleDateString()}`;
+    document.getElementById("pdf-balance").innerText = document.getElementById("balance").innerText;
+    document.getElementById("pdf-expense").innerText = document.getElementById("expense").innerText;
+    document.getElementById("pdf-pie-img").src = charts.pie.toBase64Image();
+    document.getElementById("pdf-bar-img").src = charts.bar.toBase64Image();
+    document.getElementById("pdf-table-body").innerHTML = trail.map(t => `<tr><td>${t.date}</td><td>${t.category}</td><td>${t.type}</td><td style="text-align:right">₹${t.amount}</td></tr>`).join('');
+    
+    temp.style.display = "block";
+    html2pdf().from(temp).save("MoneyTrail_Report.pdf").then(() => temp.style.display = "none");
+};
+
+document.getElementById("exportBtn").onclick = () => {
+    const csv = "Date,Type,Category,Amount\n" + trail.map(t => `${t.date},${t.type},${t.category},${t.amount}`).join('\n');
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.download = `MoneyTrail_Export.csv`; link.click();
+};
+
+/* ---------- CHARTS ---------- */
+function initCharts(data) {
+    Object.values(charts).forEach(c => c && c.destroy());
+    const expData = data.filter(t => t.type === 'expense');
+    const catMap = {}; expData.forEach(e => catMap[e.category] = (catMap[e.category] || 0) + e.amount);
+
+    charts.pie = new Chart(document.getElementById('pieChart'), {
+        type: 'doughnut', data: { labels: Object.keys(catMap), datasets: [{ data: Object.values(catMap), backgroundColor: ['#6366f1','#ec4899','#f59e0b','#10b981','#ef4444'] }] },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    const monthly = {}; trail.forEach(t => { const m = t.date.slice(0, 7); if(!monthly[m]) monthly[m] = {i:0, e:0}; t.type === 'income' ? monthly[m].i += t.amount : monthly[m].e += t.amount; });
+    const mLabels = Object.keys(monthly).sort();
+    charts.bar = new Chart(document.getElementById('barChart'), {
+        type: 'bar', data: { labels: mLabels, datasets: [ { label:'Income', data:mLabels.map(m=>monthly[m].i), backgroundColor:'#10b981' }, { label:'Expense', data:mLabels.map(m=>monthly[m].e), backgroundColor:'#ef4444' } ]},
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    const weekly = new Array(7).fill(0); expData.forEach(t => weekly[new Date(t.date).getDay()] += t.amount);
+    charts.weekly = new Chart(document.getElementById('weeklyChart'), {
+        type: 'line', data: { labels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], datasets: [{ label:'Spending', data: weekly, borderColor:'#6366f1', tension: 0.4 }] },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
 }
 
-function deleteCategory(cat) {
-    if (confirm(`Delete category "${cat}"?`)) { categories = categories.filter(c => c !== cat); save(); populateDropdowns(); }
+/* ---------- UTILS ---------- */
+function populateDropdowns() {
+    const html = cats.sort().map(c => `<option value="${c}">${c}</option>`).join('') + `<option value="custom">+ New Category</option>`;
+    document.getElementById("category").innerHTML = html;
+    document.getElementById("manageCatsList").innerHTML = cats.map(c => `<li>${c}</li>`).join('');
 }
+
+function save() {
+    localStorage.setItem("moneytrail_v6", JSON.stringify(trail));
+    localStorage.setItem("mt_bills_v6", JSON.stringify(pendingBills));
+    localStorage.setItem("mt_cats_v6", JSON.stringify(cats));
+}
+
+document.getElementById("resetAppBtn").onclick = () => {
+    askConfirmation("Reset Everything?", "All your history and categories will be permanently deleted.", () => {
+        localStorage.clear(); location.reload();
+    });
+};
 
 document.getElementById("category").onchange = e => document.getElementById("customCategoryGroup").style.display = e.target.value === 'custom' ? 'block' : 'none';
-document.getElementById("timeFrame").onchange = e => {
-    document.getElementById("filterDate").style.display = e.target.value === 'day' ? 'inline-block' : 'none';
-    document.getElementById("filterMonth").style.display = e.target.value === 'month' ? 'inline-block' : 'none';
-    updateUI();
-};
-document.getElementById("resetAppBtn").onclick = () => { if(confirm("Erase all data?")) { localStorage.clear(); location.reload(); } };
 document.getElementById("darkModeToggle").onclick = () => document.body.classList.toggle("dark");
-
-[document.getElementById("searchInput"), document.getElementById("filterDate"), document.getElementById("filterMonth"), document.getElementById("sortBy")].forEach(el => el.addEventListener("input", updateUI));
+["searchInput", "filterType"].forEach(id => document.getElementById(id).addEventListener("input", updateUI));
 
 init();
