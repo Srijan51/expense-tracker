@@ -9,7 +9,7 @@ function init() {
     document.getElementById("date").value = new Date().toISOString().split('T')[0];
     populateCategories();
     updateUI();
-    checkRecurring();
+    checkMonthlyRecurring();
 }
 
 /* ---------- STYLISH UI ACTIONS ---------- */
@@ -40,7 +40,8 @@ function askConfirm(title, msg) {
 
 /* ---------- ATTACH FUNCTIONS GLOBALLY (FIXES DELETION) ---------- */
 window.delEntry = async function(id, pool) {
-    if (await askConfirm("Delete Record?", "This will be removed permanently.")) {
+    const ok = await askConfirm("Delete Record?", "This will be removed permanently.");
+    if (ok) {
         if (pool === 'trail') trail = trail.filter(t => t.id !== id);
         else reminders = reminders.filter(r => r.id !== id);
         save(); updateUI(); toast("Deleted", "error");
@@ -51,15 +52,80 @@ window.payRem = function(id) {
     const idx = reminders.findIndex(r => r.id === id);
     const item = reminders.splice(idx, 1)[0];
     trail.push({ ...item, id: Date.now(), date: new Date().toISOString().split('T')[0] });
-    save(); updateUI(); toast("Bill Recorded!");
+    save(); updateUI(); toast("Bill Recorded!", "success");
 };
 
 window.delCat = async function(name) {
-    if (await askConfirm("Delete Category?", `Remove "${name}" from your list?`)) {
+    const ok = await askConfirm("Delete Category?", `Remove "${name}" from your shortcuts?`);
+    if (ok) {
         categories = categories.filter(c => c !== name);
         save(); populateCategories(); updateUI(); toast("Category Deleted", "error");
     }
 };
+
+/* ---------- SMART VOICE TOGGLE & PRECISION PARSER ---------- */
+const voiceBtn = document.getElementById("voiceBtn");
+let isListening = false;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.lang = 'en-IN';
+
+    recognition.onresult = (event) => {
+        const text = event.results[event.results.length - 1][0].transcript.toLowerCase();
+        parseVoice(text);
+    };
+
+    recognition.onend = () => { if (isListening) recognition.start(); };
+
+    voiceBtn.onclick = () => {
+        isListening = !isListening;
+        voiceBtn.classList.toggle("listening", isListening);
+        if (isListening) {
+            recognition.start();
+            toast("Voice On: Speak naturally...", "success");
+        } else {
+            recognition.stop();
+            toast("Voice Off");
+        }
+    };
+}
+
+function parseVoice(text) {
+    console.log("Analyzing Voice:", text);
+    const amount = text.match(/\d+/);
+    if (amount) document.getElementById("amount").value = amount[0];
+
+    if (["income", "salary", "earned"].some(k => text.includes(k))) {
+        document.getElementById("type").value = "income";
+        populateCategories();
+    }
+    if (["expense", "spent", "paid", "expenditure"].some(k => text.includes(k))) {
+        document.getElementById("type").value = "expense";
+        populateCategories();
+    }
+
+    const match = categories.find(c => text.includes(c.toLowerCase()));
+    if (match) document.getElementById("category").value = match;
+
+    // Robust Date Reconstructor
+    let d = new Date();
+    const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+    
+    if (text.includes("yesterday")) d.setDate(d.getDate() - 1);
+    else if (text.includes("tomorrow")) d.setDate(d.getDate() + 1);
+    else {
+        const dayMatch = text.match(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/);
+        const monthIndex = months.findIndex(m => text.includes(m));
+        if (dayMatch && monthIndex !== -1) {
+            d = new Date(new Date().getFullYear(), monthIndex, dayMatch[1]);
+        }
+    }
+    document.getElementById("date").value = d.toISOString().split('T')[0];
+    toast("Voice Match Applied", "success");
+}
 
 /* ---------- CORE LOGIC ---------- */
 function updateUI() {
@@ -105,20 +171,19 @@ function filterData() {
 }
 
 function runMoM() {
-    const thisMonthStr = new Date().toISOString().slice(5, 7);
-    const lastMonth = new Date(); lastMonth.setMonth(lastMonth.getMonth() - 1);
-    const lastMonthStr = lastMonth.toISOString().slice(5, 7);
-    const getExp = (m) => trail.filter(t => t.type === 'expense' && t.date.slice(5, 7) === m).reduce((s,t) => s + t.amount, 0);
-    const cur = getExp(thisMonthStr), prev = getExp(lastMonthStr);
-    const statEl = document.getElementById("comparisonStat");
+    const thisM = new Date().getMonth();
+    const lastM = thisM === 0 ? 11 : thisM - 1;
+    const getSum = (m) => trail.filter(t => t.type === 'expense' && new Date(t.date).getMonth() === m).reduce((s,t) => s + t.amount, 0);
+    const cur = getSum(thisM), prev = getSum(lastM);
+    const el = document.getElementById("comparisonStat");
     if (prev > 0) {
         const diff = ((cur - prev) / prev) * 100;
-        statEl.textContent = `${diff > 0 ? '+' : ''}${Math.round(diff)}%`;
-        statEl.style.color = diff > 0 ? 'var(--expense)' : 'var(--income)';
-    } else statEl.textContent = "0%";
+        el.textContent = `${diff > 0 ? '+' : ''}${Math.round(diff)}%`;
+        el.style.color = diff > 0 ? 'var(--expense)' : 'var(--income)';
+    } else el.textContent = "0%";
 }
 
-/* ---------- CHARTJS ENGINE ---------- */
+/* ---------- CHARTS ENGINE ---------- */
 function initCharts(data) {
     Object.values(charts).forEach(c => { if(c && c.canvas.id !== 'historyBarChart') c.destroy(); });
     const curMonth = new Date().toISOString().slice(0, 7);
@@ -141,7 +206,7 @@ function initCharts(data) {
     const curInc = trail.filter(t => t.type === 'income' && t.date.startsWith(curMonth)).reduce((s,t) => s + t.amount, 0);
     const curExp = trail.filter(t => t.type === 'expense' && t.date.startsWith(curMonth)).reduce((s,t) => s + t.amount, 0);
     charts.bar = new Chart(document.getElementById('barChart'), {
-        type: 'bar', data: { labels: ['Income', 'Expense'], datasets: [{ data: [curInc, curExp], backgroundColor: ['#22c55e', '#ef4444'], borderRadius: 12 }] },
+        type: 'bar', data: { labels: ['Income', 'Expenditure'], datasets: [{ data: [curInc, curExp], backgroundColor: ['#22c55e', '#ef4444'], borderRadius: 12 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 }
@@ -162,12 +227,12 @@ function renderInsights() {
 function populateCategories() {
     const type = document.getElementById("type").value;
     const sorted = [...categories].sort();
-    document.getElementById("category").innerHTML = (type === 'income' ? '<option value="">(None)</option>' : '') + sorted.map(c => `<option value="${c}">${c}</option>`).join('') + `<option value="custom">+ New Category</option>`;
+    document.getElementById("category").innerHTML = (type === 'income' ? '<option value="">(Optional Category)</option>' : '') + sorted.map(c => `<option value="${c}">${c}</option>`).join('') + `<option value="custom">+ New Category</option>`;
     document.getElementById("filterCategory").innerHTML = `<option value="all">All Categories</option>` + sorted.map(c => `<option value="${c}">${c}</option>`).join('');
-    document.getElementById("manageCatsList").innerHTML = sorted.map(c => `<li class="cat-pill"><span>${c}</span><button onclick="delCat('${c}')" class="cat-del-btn"><i class="fas fa-xmark"></i></button></li>`).join('');
+    document.getElementById("manageCatsList").innerHTML = sorted.map(c => `<li class="cat-pill">${c} <button onclick="delCat('${c}')"><i class="fas fa-xmark"></i></button></li>`).join('');
 }
 
-/* ---------- VOICE & STORAGE ---------- */
+/* ---------- STORAGE & EVENTS ---------- */
 function save() {
     localStorage.setItem("trail_pro_v22", JSON.stringify(trail));
     localStorage.setItem("rem_pro_v22", JSON.stringify(reminders));
@@ -181,8 +246,8 @@ document.getElementById("transactionForm").onsubmit = (e) => {
     const finalCat = (catVal === 'custom') ? document.getElementById("customCategory").value : catVal;
     if (catVal === 'custom' && finalCat && !categories.includes(finalCat)) { categories.push(finalCat); populateCategories(); }
     const entry = { id: Date.now(), type, amount: parseFloat(document.getElementById("amount").value), date: document.getElementById("date").value, category: (type === 'income' && !finalCat) ? "" : (finalCat || "General"), description: document.getElementById("description").value };
-    if (document.getElementById("isReminder").checked) { reminders.push(entry); toast("Reminder Saved"); }
-    else { trail.push(entry); toast("Saved Successfully"); }
+    if (document.getElementById("isReminder").checked) { reminders.push(entry); toast("Reminder Saved", "success"); }
+    else { trail.push(entry); toast("Saved Successfully", "success"); }
     save(); updateUI(); e.target.reset();
     document.getElementById("date").value = new Date().toISOString().split('T')[0];
 };
@@ -199,7 +264,7 @@ function checkMonthlyRecurring() {
 document.getElementById("backupBtn").onclick = () => {
     const blob = new Blob([JSON.stringify({ trail, reminders, categories })], { type: "application/json" });
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
-    link.download = `Backup_${new Date().toISOString().slice(0,10)}.json`; link.click();
+    link.download = `MoneyTrail_Backup.json`; link.click();
     toast("Backup Created");
 };
 
@@ -209,8 +274,8 @@ document.getElementById("restoreInput").onchange = (e) => {
         try {
             const imp = JSON.parse(ev.target.result);
             trail = imp.trail || []; reminders = imp.reminders || []; categories = imp.categories || categories;
-            save(); updateUI(); populateCategories(); toast("Restored!");
-        } catch { toast("Error!", "error"); }
+            save(); updateUI(); populateCategories(); toast("Data Restored!", "success");
+        } catch { toast("Invalid File", "error"); }
     };
     reader.readAsText(e.target.files[0]);
 };
